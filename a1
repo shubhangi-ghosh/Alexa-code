@@ -1,0 +1,216 @@
+#include <fstream>
+#include <vector>
+#include <iostream>
+#include <string>
+#include <stdlib.h>
+#include <sstream>
+using namespace std;
+
+std::string to_string(int i)
+{
+    std::stringstream ss;
+    ss << i;
+    return ss.str();
+}
+
+string convert(int decimal) //Number to Binary Convertion
+{
+	string binary = "";
+	for(int i = decimal;i > 0;i/=2)
+		binary = to_string(i%2) + binary;
+	if(binary.length() < 8)
+		binary = string(8-binary.length(),'0').append(binary);
+	return binary;
+}
+
+//Data Type Declarations
+struct mnemonics{
+	string name;
+	string binary;
+	int size;
+}mot[5];	//machine opcode table
+
+struct symbol{ //Symbol Table format
+	string name;
+	string type;
+	int location;
+	int size;
+	int segment_id;
+	string is_global;
+};
+
+struct segment{ //Segment Table format
+	int id;
+	string name;
+	int size;
+};
+
+vector<symbol> symlab; //Symbol Table
+vector<segment> sec; //Segment Table
+int lc = 0; //Controls Location Counter
+int sec_id = 0; //Manage segment Id
+ifstream infile; //Input File Stream
+ofstream outfile; //Output File Stream
+string word; //Read Word by Word from file
+string temp; //Temporary Variable
+int control,size;  //Control Variable for search
+
+void init()
+{
+	//Initializing Machine Opcode Table
+	mot[0] = {"ADD","00000001",_};
+	mot[1] = {"LDS","00000010",_};
+	mot[2] = {"LEA","00000011",_};
+	mot[3] = {"XCHNG","00000100",_};
+	mot[4] = {"MOV","00000101",_};
+
+}
+
+int search_mot(string opcode) //Search Machine Opcode Table
+{
+	int index = -1;
+	for(int i = 0;i < 5;i++)
+	{
+		if(mot[i].name == opcode)
+		{
+			index = i;
+			break;
+		}
+	}
+	return index;
+}
+
+int search_symbol(string variable) //Find Location of the Given Symbol
+{
+	int location = -1;
+	for(vector<symbol>::const_iterator i = symlab.begin();i != symlab.end();++i)
+	{
+		if(i->name == variable)
+		{
+			location = i->location;
+			break;
+		}
+	}
+  	return location;
+}
+
+int size_evaluation(string data) //Evaluate size of Variable defined
+{
+	int size = 0;
+	for(int i = 0;i < data.length();i++)
+	{
+		if(data[i] == ',')
+			size += 4;
+	}
+	size += 4;
+	return size;
+}
+
+string data_break(string data) //Convert String of Input Number into Binary String
+{
+	string final;
+	string temporary = "";
+	for(int i = 0;i < data.length();i++)
+	{
+		if(data[i] == ',')
+		{
+			final += convert(atoi(temporary.c_str()))+",";
+			temporary = "";
+		}
+		else 
+			temporary += data[i];
+	}
+	final.erase(final.length()-1,1);
+	return final;
+}
+
+void store_symlab() //Storing Symbol Table in File
+{
+	outfile.open("symbol.csv");
+	outfile << "Name,Type,Location,Size,SegmentID,IsGlobal\n";
+	for(vector<symbol>::const_iterator i = symlab.begin();i != symlab.end();++i)
+	{
+		outfile << i->name<<",";
+		outfile << i->type<<",";
+		outfile << i->location<<",";
+		outfile << i->size<<",";
+		outfile << i->segment_id<<",";
+		outfile << i->is_global<<"\n";
+	}	
+	outfile.close();
+}
+
+void store_sec() //Storing Segment Table in File
+{
+	outfile.open("section.csv");
+	outfile << "ID,Name,Size\n";
+	for(vector<segment>::const_iterator i = sec.begin();i != sec.end();++i)
+	{
+		outfile << i->id<<",";
+		outfile << i->name<<",";
+		outfile << i->size<<"\n";
+	}
+	outfile.close();
+}
+
+void pass1()
+{
+	
+	infile.open("input.txt");
+	while(infile >> word)
+	{
+		control = search_mot(word);
+		if(control == -1)
+		{
+			temp = word;
+			if(word.find(":") != -1)//Label is Found
+			{
+				symlab.push_back({temp.erase(word.length()-1,1),"label",lc,-1,sec_id,"false"}); //Inserting into Symbol Table
+			}
+			else if(word == "segment")//Segment is Found
+			{
+				infile >> word;
+				sec_id++;
+				sec.push_back({sec_id,word,0}); //Inserting into Segment Table
+				if(sec_id != 1) // Updating previous segment Size
+				{
+					sec[sec_id-2].size = lc;
+					lc = 0;
+				}
+			}
+			else if(word == "global") //Global Varaible is Found
+			{
+				infile >> word;
+				symlab.push_back({word,"label",-1,-1,-1,"true"}); //Inserting into Symbol Table
+			}
+			else if(word == "extern") //External Variable is found
+			{
+				infile >> word;
+				symlab.push_back({word,"external",-1,-1,-1,"false"}); //Inserting into Symbol Table
+			}
+			else//Variable is Found
+			{
+				infile >> word;
+				infile >> word;
+				size = size_evaluation(word);
+				symlab.push_back({temp,"var",lc,size,sec_id,"false"}); //Inserting into Symbol Table
+				lc += size;
+			}
+		}
+	
+	}
+	
+	sec[sec_id-1].size = lc; //Updating size of current Segment
+	
+	store_symlab();
+	store_sec();
+	
+	infile.close();
+}
+
+int main()
+{
+	init();
+	pass1();
+	return 0;
+}
